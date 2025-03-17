@@ -1,0 +1,111 @@
+name: Publish Docs to Github Pages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ./typescript
+
+      - name: Install and Build JSDocs
+        working-directory: ./typescript
+        run: |
+          npm ci
+          npm run build
+          npm run docs
+
+      - name: Build AgentKit JSDocs
+        run: |
+          mkdir -p docs/agentkit/typescript
+          cp -r typescript/agentkit/docs/* docs/agentkit/typescript
+
+      - name: Build AgentKit LangChain JSDocs
+        run: |
+          mkdir -p docs/agentkit-langchain/typescript
+          cp -r typescript/framework-extensions/langchain/docs/* docs/agentkit-langchain/typescript
+
+      - name: Build AgentKit Vercel AI SDK JSDocs
+        run: |
+          mkdir -p docs/agentkit-vercel-ai-sdk/typescript
+          cp -r typescript/framework-extensions/vercel-ai-sdk/docs/* docs/agentkit-vercel-ai-sdk/typescript
+
+      - name: Build AgentKit Model Context Protocol JSDocs
+        run: |
+          mkdir -p docs/agentkit-model-context-protocol/typescript
+          cp -r typescript/framework-extensions/model-context-protocol/docs/* docs/agentkit-model-context-protocol/typescript
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv for CDP AgentKit Core Python
+        id: cached-poetry-dependencies-core
+        uses: actions/cache@v3
+        with:
+          path: ./python/coinbase-agentkit/.venv
+          key: venv-agentkit-${{ runner.os }}-3.10-${{ hashFiles('python/coinbase-agentkit/poetry.lock') }}
+
+      - name: Install dependencies for Coinbase AgentKit Python
+        if: steps.cached-poetry-dependencies-core.outputs.cache-hit != 'true'
+        run: |
+          cd python/coinbase-agentkit
+          poetry install --with dev
+          cd ..
+
+      - name: Build Sphinx Documentation for Coinbase AgentKit Python
+        run: |
+          cd python/coinbase-agentkit
+          poetry run make docs
+          cd docs
+          poetry run make html
+          cd ../../..
+          mkdir -p docs/coinbase-agentkit/python
+          cp -r python/coinbase-agentkit/docs/_build/html/* docs/coinbase-agentkit/python
+
+      - name: Load cached venv for CDP LangChain Python
+        id: cached-poetry-dependencies-langchain
+        uses: actions/cache@v3
+        with:
+          path: ./python/cdp-langchain/.venv
+          key: venv-langchain-${{ runner.os }}-3.10-${{ hashFiles('python/cdp-langchain/poetry.lock') }}
+
+      - name: Install dependencies for Coinbase AgentKit LangChain Python
+        if: steps.cached-poetry-dependencies-langchain.outputs.cache-hit != 'true'
+        run: |
+          cd python/framework-extensions/langchain
+          poetry install --with dev
+          cd ../..
+
+      - name: Build Sphinx Documentation for Coinbase AgentKit LangChain Python
+        run: |
+          cd python/framework-extensions/langchain
+          poetry run make docs
+          cd docs
+          poetry run make html
+          cd ../../../..
+          mkdir -p docs/coinbase-agentkit-langchain/python
+          cp -r python/framework-extensions/langchain/docs/_build/html/* docs/coinbase-agentkit-langchain/python
+
+      - name: Deploy to Github Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          keep_files: false
